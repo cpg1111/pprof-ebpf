@@ -2,14 +2,31 @@
 
 
 [[projects]]
+  name = "github.com/inconshreveable/mousetrap"
+  packages = ["."]
+  revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
+  version = "v1.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/iovisor/gobpf"
   packages = ["bcc","pkg/cpuonline"]
   revision = "4dc1144cd2a0cc5dbae0b4db4691bd5a84ecc602"
 
+[[projects]]
+  name = "github.com/spf13/cobra"
+  packages = ["."]
+  revision = "7b2c5ac9fc04fc5efafb60700713d4fa609b777b"
+
+[[projects]]
+  name = "github.com/spf13/pflag"
+  packages = ["."]
+  revision = "e57e3eeb33f795204c1ca35f56c44f83227c6e66"
+  version = "v1.0.0"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b86da7e3e73918eaaba28b19bacfdd3aa0e1ad5d1bdd3f3170d03bb2747945e6"
+  inputs-digest = "65690d950e96b1ae56d43da6951cdfef0a668a5750902c7675944aa88afedbef"
   solver-name = "gps-cdcl"
   solver-version = 1
