@@ -2,13 +2,10 @@ package cpu
 
 import (
 	"bytes"
-	"encoding/binary"
-	"fmt"
-	"os"
-	"os/signal"
-	"unsafe"
+	"strconv"
 
 	bpf "github.com/iovisor/gobpf/bcc"
+	"github.com/spf13/cobra"
 
 	"github.com/cpg1111/pprof-ebpf/pkg/srcfmt"
 )
@@ -18,120 +15,146 @@ import "C"
 const (
 	bpfSRC = `
 	#include <uapi/linux/ptrace.h>
-	#include <bcc/proto.h>
+	#include <linux/sched.h>
 	
-	typedef struct {
+	#define MINBLOCK_US {{ .MinBlockUS }}
+	#define MAXBLCOK_US {{ .MaxBlockUS }}
+
+	struct proc_key_t {
 		u32 pid;
-		uid_t uid;
-		gid_t gid;
-		int ret;
-		char filename[{{.FileNameLen}}];
-	} {{.EventName}}_event_t;
+		u32 tgid;
+		int user_stack_id;
+		int kernel_stack_id;
+		char name[{{ .TaskCommLen }}];
+	};
 
-	BPF_PERF_OUTPUT({{.EventName}}_event);
-	BPF_HASH({{.EventCall}}, u64, {{.EventName}}_event_t);
+	BPF_HASH(counts, struct key_t);
+	BPF_HASH(start, u32);
+	BPF_STACK_TRACE(stack_traces, {{ .StackStorageSize }});
 
-	int kprobe__{{.KFuncCall}}(struct pt_regs *ctx, int dfd, const char *filename,
-							uid_t uid, gid_t gid, int flag)
-	{
-		u64 pid = bpf_get_current_pid_tgid();
-		{{.EventName}}_event_t event = {
-			.pid = pid >> 32,
-			.uid = uid,
-			.gid = gid,												
-		};
-		bpf_probe_read(&event.filename, sizeof(event.filename), (void *)filename);
-		{{.EventCall}}.update(&pid, &event);
-		return 0;
-	}
-	
-	int kretprobe__{{.KFuncCall}}(struct pt_regs *ctx)
-	{
-		int ret = PT_REGS_RC(ctx);
-		u64 pid = bpf_get_current_pid_tgid();
-		{{.EventName}}_event_t *eventp = {{.EventCall}}.lookup(&pid);
-		if (eventp == 0) {
-			return 0;
+	int oncpu(struct pt_regs *ctx, struct task_struct *prev) {
+		u32 pid = prev->pid;
+		u32 tgid = prev->tgid;
+		u64 ts, *tsp;
+		// record previous thread sleep time
+		if (({{ .ThreadFilter }}) && ({{ .StateFilter }})) {
+			ts = bpf_ktime_get_ns();
+			start.update(&pid, &ts);								    
 		}
-		{{.EventName}}_event_t event = *eventp;
-		event.ret = ret;
-		{{.EventName}}_event.perf_submit(ctx, &event, sizeof(event));
-		{{.EventCall}}.delete(&pid);
+
+		// get the current thread's start time
+		pid = bpf_get_current_pid_tgid();
+		tgid = bpf_get_current_pid_tgid() >> 32;
+		tsp = start.lookup(&pid);
+		if (tsp == 0) {
+			return 0;        // missed start or filtered					    
+		}
+
+		// calculate current thread's delta time
+		u64 delta = bpf_ktime_get_ns() - *tsp;
+		start.delete(&pid);
+		delta = delta / 1000;
+		if ((delta < MINBLOCK_US) || (delta > MAXBLOCK_US)) {
+			return 0;					    
+		}
+
+		// create map key
+		u64 zero = 0, *val;
+		struct proc_key_t key = {};
+
+		key.pid = pid;
+		key.tgid = tgid;
+		key.user_stack_id = {{ .UserStackGet }};
+		key.kernel_stack_id = {{ .KernelStackGet }};
+		bpf_get_current_comm(&key.name, sizeof(key.name));
+
+		val = counts.lookup_or_init(&key, &zero);
+		(*val) += delta;
 		return 0;
 	}
 `
 )
 
 type srcTMPL struct {
-	FileNameLen int
-	EventName   string
-	EventCall   string
-	KFuncCall   string
+	MinBlockUS       int
+	MaxBlockUS       int
+	TaskCommLen      int
+	StackStorageSize int
+	ThreadFilter     string
+	StateFilter      string
+	UserStackGet     string
+	KernelStackGet   string
 }
 
-type event struct {
-	Pid         uint32
-	Uid         uint32
-	Gid         uint32
-	ReturnValue int32
-	Filename    [256]byte
+type procKey struct {
+	Pid           uint32
+	TGid          uint32
+	UserStackID   int
+	KernelStackID int
+	Name          []byte
 }
 
-func Run() {
-	eventStr := "chown"
-	tmplData := &srcTMPL{
-		FileNameLen: 256,
-		EventName:   eventStr,
-		EventCall:   eventStr + "call",
-		KFuncCall:   "_sys_fchownat",
+func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int, uOnly, kOnly, folded bool) (err error) {
+	var threadCtx, threadFilter, stateFilter, script, uStackGet string
+	if tgid != 0 {
+		threadCtx = fmt.Sprintf("PID %d", tgid)
+		threadFilter = fmt.Sprintf("tgid == %d", tgid)
+	} else if pid != 0 {
+		threadCtx = fmt.Sprintf("PID %d", pid)
+		threadFilter = fmt.Sprintf("pid == %d", pid)
+	} else if uOnly {
+		threadCtx = "user threads"
+		threadFilter = "!(prev->flags & PF_KTHREAD)"
+		kStackGet = "-1"
+	} else if kOnly {
+		threadCtx = "kernel threads"
+		threadFilter = "prev->flags & PF_KTHREAD"
+		uStackGet = "-1"
+	} else {
+		threadCtx = "all threads"
+		threadFilter = "1"
 	}
-	script, err := srcfmt.ProcessSrc(bpfSRC, tmplData)
+	if state == 0 {
+		stateFilter = "prev->state == 0"
+	} else if state < -1 {
+		stateFilter = fmt.Sprintf("prev->state & %d", state)
+	} else {
+		stateFilter = "1"
+	}
+	if len(uStackGet) == 0 {
+		uStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID)"
+	}
+	if len(kStackGet) == 0 {
+		kStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK)"
+	}
+	tmpl := &srcTMPL{
+		MinBlockUS:       minBlock,
+		MaxBlockUS:       maxBlock,
+		TaskCommLen:      taskCommLen,
+		StackStorageSize: stackStorageSize,
+		ThreadFilter:     threadFilter,
+		StateFilter:      stateFilter,
+		UserStackGet:     uStackGet,
+		KernelStackGet:   kStackGet,
+	}
+	script, err = srcFmt.ProcessSrc(bpfSrc, tmpl)
 	if err != nil {
-		println(err.Error())
+		return err
 	}
 	mod := bpf.NewModule(script.String(), nil)
-	defer mod.Close()
-	probe, err := mod.LoadKprobe("kprobe_" + tmplData.KFuncCall)
-	if err != nil {
-		println(err.Error())
-	}
-	err = mod.AttachKprobe(tmplData.KFuncCall, probe)
-	if err != nil {
-		println(err.Error())
-	}
-	println("tracing...")
-	channel := make(chan []byte)
-	table := bpf.NewTable(mod.TableId(eventStr+"_events"), mod)
-	perfMap, err := bpf.InitPerfMap(table, channel)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to init perf map: %s\n", err)
-		return
-	}
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, os.Kill)
-
-	go func() {
-		var ev event
-		for data := range channel {
-			err := binary.Read(bytes.NewBuffer(data), binary.LittleEndian, &ev)
-			if err != nil {
-				println(err.Error())
-				continue
-			}
-			filename := (*C.char)(unsafe.Pointer(&ev.Filename))
-			fmt.Printf(
-				"uid %d gid %d pid %d called fchownat(2) on %s (return value: %d)\n",
-				ev.Uid,
-				ev.Gid,
-				ev.Pid,
-				C.GoString(filename),
-				ev.ReturnValue,
-			)
+	defer func() {
+		closeErr := mod.Close()
+		if closeErr != nil {
+			err = fmt.Errorf("%s, %s", err.Error(), closeErr.Error())
 		}
 	}()
+	ev, err := mod.LoadKprobe("finish_task_switch")
+	err = mod.AttachKprobe("on_cpu", ev)
+	if err != nil {
+		return err
+	}
+	if !folded {
+		fmt.Printf("Tracing on-cpu (us) of %s by %s stack\n", threadCtx, stackCtx)
+	}
 
-	perfMap.Start()
-	defer perfMap.Stop()
-	<-sig
 }
