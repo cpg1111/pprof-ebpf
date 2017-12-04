@@ -1,11 +1,9 @@
 package cpu
 
 import (
-	"bytes"
-	"strconv"
+	"fmt"
 
 	bpf "github.com/iovisor/gobpf/bcc"
-	"github.com/spf13/cobra"
 
 	"github.com/cpg1111/pprof-ebpf/pkg/srcfmt"
 )
@@ -28,7 +26,7 @@ const (
 		char name[{{ .TaskCommLen }}];
 	};
 
-	BPF_HASH(counts, struct key_t);
+	BPF_HASH(counts, struct proc_key_t);
 	BPF_HASH(start, u32);
 	BPF_STACK_TRACE(stack_traces, {{ .StackStorageSize }});
 
@@ -95,7 +93,7 @@ type procKey struct {
 }
 
 func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int, uOnly, kOnly, folded bool) (err error) {
-	var threadCtx, threadFilter, stateFilter, script, uStackGet string
+	var threadCtx, stackCtx, threadFilter, stateFilter, uStackGet, kStackGet string
 	if tgid != 0 {
 		threadCtx = fmt.Sprintf("PID %d", tgid)
 		threadFilter = fmt.Sprintf("tgid == %d", tgid)
@@ -116,7 +114,7 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 	}
 	if state == 0 {
 		stateFilter = "prev->state == 0"
-	} else if state < -1 {
+	} else if state <= -1 {
 		stateFilter = fmt.Sprintf("prev->state & %d", state)
 	} else {
 		stateFilter = "1"
@@ -137,17 +135,13 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 		UserStackGet:     uStackGet,
 		KernelStackGet:   kStackGet,
 	}
-	script, err = srcFmt.ProcessSrc(bpfSrc, tmpl)
+	script, err := srcfmt.ProcessSrc(bpfSRC, tmpl)
 	if err != nil {
 		return err
 	}
+	fmt.Println(script)
 	mod := bpf.NewModule(script.String(), nil)
-	defer func() {
-		closeErr := mod.Close()
-		if closeErr != nil {
-			err = fmt.Errorf("%s, %s", err.Error(), closeErr.Error())
-		}
-	}()
+	defer mod.Close()
 	ev, err := mod.LoadKprobe("finish_task_switch")
 	err = mod.AttachKprobe("on_cpu", ev)
 	if err != nil {
@@ -156,5 +150,13 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 	if !folded {
 		fmt.Printf("Tracing on-cpu (us) of %s by %s stack\n", threadCtx, stackCtx)
 	}
-
+	/*var (
+		missingStacks int
+		hasENoMem     bool
+	)*/
+	iter := mod.TableIter()
+	for res := range iter {
+		fmt.Printf("%+v\n", res)
+	}
+	return nil
 }
