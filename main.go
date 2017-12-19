@@ -12,6 +12,6 @@ var pid = flag.Int("pid", 1, "pid to profile")
 func main() {
 	fmt.Println("running pprof-ebpf")
 
-	err := cpu.Run(*pid, 0, 0, 99999, 4096, 8182, 0, false, false, false)
+	err := cpu.Run(*pid, 0, 0, 99999, 4096, 1024, 0, false, false, false)
 	fmt.Println(err)
 }
