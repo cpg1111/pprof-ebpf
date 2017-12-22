@@ -11,7 +11,7 @@
   branch = "master"
   name = "github.com/iovisor/gobpf"
   packages = ["bcc","pkg/cpuonline"]
-  revision = "4dc1144cd2a0cc5dbae0b4db4691bd5a84ecc602"
+  revision = "0916381e88e0edd4ba0bfbd20ad33e5a1a0d959b"
 
 [[projects]]
   name = "github.com/spf13/cobra"
