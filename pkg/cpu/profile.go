@@ -153,12 +153,8 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 	if !folded {
 		fmt.Printf("Tracing on-cpu (us) of %s by %s stack\n", threadCtx, stackCtx)
 	}
-	/*var (
-		missingStacks int
-		hasENoMem     bool
-	)*/
 	iter := mod.TableIter()
-	for res := range iter {
+	for res := range iter { // TODO use this data
 		fmt.Printf("%+v\n", res)
 	}
 	return nil
