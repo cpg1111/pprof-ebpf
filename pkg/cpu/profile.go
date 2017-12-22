@@ -5,6 +5,7 @@ import (
 
 	bpf "github.com/iovisor/gobpf/bcc"
 
+	"github.com/cpg1111/pprof-ebpf/pkg/bpferrors"
 	"github.com/cpg1111/pprof-ebpf/pkg/srcfmt"
 )
 
@@ -52,7 +53,7 @@ const (
 		u64 delta = bpf_ktime_get_ns() - *tsp;
 		start.delete(&pid);
 		delta = delta / 1000;
-		if ((delta < MINBLOCK_US) || (delta > MAXBLOCK_US)) {
+		if ((delta < {{ .MinBlockUS }}) || (delta > {{ .MaxBlockUS }})) {
 			return 0;					    
 		}
 
@@ -139,11 +140,13 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 	if err != nil {
 		return err
 	}
-	fmt.Println(script)
 	mod := bpf.NewModule(script.String(), nil)
+	if mod == nil {
+		return bpferrors.ErrBadModuleBuild
+	}
 	defer mod.Close()
-	ev, err := mod.LoadKprobe("finish_task_switch")
-	err = mod.AttachKprobe("on_cpu", ev)
+	ev, err := mod.LoadKprobe("oncpu")
+	err = mod.AttachKprobe("finish_task_switch", ev)
 	if err != nil {
 		return err
 	}
