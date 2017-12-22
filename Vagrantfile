@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
         libedit-dev
         git clone https://github.com/iovisor/bcc.git
         mkdir bcc/build; cd bcc/build
-        git checkout v0.3.0
+        git checkout v0.5.0
         cmake .. -DCMAKE_INSTALL_PREFIX=/usr
         make
         sudo make install
