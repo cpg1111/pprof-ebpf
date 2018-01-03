@@ -1,4 +1,4 @@
-package heep
+package heap
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 
 	bpf "github.com/iovisor/gobpf/bcc"
 
-	"github.com/cpg1111/pprof-ebpf/pkg/bpferros"
+	"github.com/cpg1111/pprof-ebpf/pkg/bpferrors"
 	"github.com/cpg1111/pprof-ebpf/pkg/srcfmt"
 )
 
@@ -24,7 +24,7 @@ const (
 	struct combined_alloc_info_t {
 		u64 total_size;
 		u64 number_of_allocs;
-	}
+	};
 
 	BPF_HASH(sizes, u64);
 	BPF_TABLE("hash", u64, struct alloc_info_t, allocs, 1000000);
@@ -39,7 +39,7 @@ const (
 		if (existing_cinfo != 0)
 			cinfo = *existing_cinfo;
 		cinfo.total_size += sz;
-		cinfo.num_allocs += 1;
+		cinfo.number_of_allocs += 1;
 		combined_allocs.update(&stack_id, &cinfo);
 	}
 
@@ -50,7 +50,7 @@ const (
 		if (existing_cinfo != 0)
 			cinfo = *existing_cinfo;
 		if (sz >= cinfo.total_size) {
-			cinfo.total_size = 0
+			cinfo.total_size = 0;
 		} else {
 			cinfo.total_size -= sz;
 		}
@@ -64,7 +64,7 @@ const (
 		if ({{ .SampleEveryN }} > 0) {
 			u64 ts = bpf_ktime_get_ns();
 			if ((int)(ts) % {{ .SampleEveryN }} != 0) {
-				ts = (u64)((int)(ts) - ((int)(ts) % {{.SampleEveryN}});
+				ts = (u64)((int)(ts) - ((int)(ts) % {{.SampleEveryN}}));
 			}
 		}
 		u64 pid = bpf_get_current_pid_tgid();
@@ -251,14 +251,14 @@ func createProbe(mod *bpf.Module, pid int, obj, sym, fnPrefix string, canFail bo
 		if canFail {
 			return nil
 		}
-		return err
+		return fmt.Errorf("user probe error: %s", err)
 	}
 	err = mod.AttachUretprobe(obj, sym, retProbe, pid)
 	if err != nil {
 		if canFail {
 			return nil
 		}
-		return err
+		return fmt.Errorf("user return probe error: %s", err)
 	}
 	return nil
 }
@@ -272,74 +272,84 @@ func concatSRCs(src1, src2 string) string {
 }
 
 func createUserProbes(mod *bpf.Module, pid int, srcObj string) error {
-	err = createProbe(mod, pid, srcObj, "malloc", "", false)
+	err := createProbe(mod, pid, srcObj, "malloc", "", false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'malloc': %s", err)
 	}
 	err = createProbe(mod, pid, srcObj, "calloc", "", false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'calloc': %s", err)
 	}
 	err = createProbe(mod, pid, srcObj, "realloc", "", false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'realloc': %s", err)
 	}
 	err = createProbe(mod, pid, srcObj, "posix_memalign", "", false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'posix_memalign': %s", err)
 	}
 	err = createProbe(mod, pid, srcObj, "valloc", "", false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'valloc': %s", err)
 	}
 	err = createProbe(mod, pid, srcObj, "memalign", "", false)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'memalign': %s", err)
 	}
 	err = createProbe(mod, pid, srcObj, "aligned_alloc", "", true)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to attach 'aligned_alloc': %s", err)
 	}
+	return nil
 }
 
-func Run(pid, minSize, maxSize sampleRate, count int, kTrace, combinedOnly, traceAll bool, srcObj string) error {
+func Run(pid, minSize, maxSize, sampleRate, count int, kTrace, combinedOnly, traceAll bool, srcObj string) error {
 	tmpl := &srcTMPL{
 		StackFlags:   "BPF_F_REUSE_STACKID",
 		SampleEveryN: sampleRate,
 		PageSize:     os.Getpagesize(),
 	}
 	if minSize > -1 && maxSize > -1 {
-		tmpl.SizeFilter = fmt.Sprintf("if (size < %d || size > %d) return 0;", minSize, maxSize)
+		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) < %d || (int)(size) > %d) return 0;", minSize, maxSize)
 	} else if minSize > -1 {
-		tmpl.SizeFilter = fmt.Sprintf("if (size < %d) return 0;", minSize)
+		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) < %d) return 0;", minSize)
 	} else if maxSize > -1 {
-		tmpl.SizeFilter = fmt.Sprintf("if (size > %d) return 0;", maxSize)
+		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) > %d) return 0;", maxSize)
 	}
 	src := bpfSRC
 	if kTrace {
 		src = concatSRCs(bpfSRC, kSRC)
-	} else {
+	}
+	if !kTrace || traceAll {
 		tmpl.StackFlags = tmpl.StackFlags + "|BPF_F_USER_STACK"
 	}
 	script, err := srcfmt.ProcessSrc(src, tmpl)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to process bpf source code: %s", err)
 	}
 	mod := bpf.NewModule(script.String(), nil)
-	if !kTrace {
+	if mod == nil {
+		return bpferrors.ErrBadModuleBuild
+	}
+	if !kTrace || traceAll {
 		err = createUserProbes(mod, pid, srcObj)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create userspace probes: %s", err)
 		}
 		probe, err := mod.LoadUprobe("free_enter")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to load 'free()' probe: %s", err)
 		}
 		err = mod.AttachUprobe(srcObj, "free", probe, pid)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to attach 'free()' probe: %s", err)
 		}
 	} else {
 		fmt.Println("attaching kernel tracepoints...")
 	}
+	iter := mod.TableIter()
+	for res := range iter {
+		fmt.Printf("%+v\n", res)
+	}
+	return nil
 }
