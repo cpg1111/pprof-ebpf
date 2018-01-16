@@ -53,7 +53,7 @@ const (
 		u64 delta = bpf_ktime_get_ns() - *tsp;
 		start.delete(&pid);
 		delta = delta / 1000;
-		if ((delta < {{ .MinBlockUS }}) || (delta > {{ .MaxBlockUS }})) {
+		if (((int)(delta) < {{ .MinBlockUS }}) || ((int)(delta) > {{ .MaxBlockUS }})) {
 			return 0;					    
 		}
 

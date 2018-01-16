@@ -8,6 +8,20 @@ import (
 	"github.com/cpg1111/pprof-ebpf/pkg/cpu"
 )
 
+func init() {
+	cpuprofileCMD.Flags().String("exec", "", "command to execute and profile")
+	cpuprofileCMD.Flags().Int("pid", 0, "pid to profile, if exec is provided, this is ignored")
+	cpuprofileCMD.Flags().Int("tgid", 0, "specific thread group id to profile")
+	cpuprofileCMD.Flags().Int("min-block", 0, "minimum blocks in a sample")
+	cpuprofileCMD.Flags().Int("max-block", 1024, "maximum blocks in a sample")
+	cpuprofileCMD.Flags().Int("task-name-len", 256, "max length of task names")
+	cpuprofileCMD.Flags().Int("storage-size", 1024, "size of storage for stack traces")
+	cpuprofileCMD.Flags().Int("state", 0, "process state to watch")
+	cpuprofileCMD.Flags().Bool("user-space-only", false, "profile only user space")
+	cpuprofileCMD.Flags().Bool("kernel-space-only", false, "profile only kernel space")
+	cpuprofileCMD.Flags().Bool("fold", true, "whether to fold stack traces")
+}
+
 func getCPUOpts(cmd *cobra.Command) (opts cpu.RunOpts, err error) {
 	flags := cmd.Flags()
 	exec, err := flags.GetString("exec")
@@ -29,11 +43,11 @@ func getCPUOpts(cmd *cobra.Command) (opts cpu.RunOpts, err error) {
 	if err != nil {
 		return
 	}
-	opts.MinBlock, err = flags.GetInt("min")
+	opts.MinBlock, err = flags.GetInt("min-block")
 	if err != nil {
 		return
 	}
-	opts.MaxBlock, err = flags.GetInt("max")
+	opts.MaxBlock, err = flags.GetInt("max-block")
 	if err != nil {
 		return
 	}
@@ -65,7 +79,7 @@ func getCPUOpts(cmd *cobra.Command) (opts cpu.RunOpts, err error) {
 }
 
 var cpuprofileCMD = &cobra.Command{
-	Use:   "cpu [OPTIONS]",
+	Use:   "cpu",
 	Short: "profile cpu",
 	Long: `profile cpu in user space and/or kernel space
 	for a specific pid or binary`,

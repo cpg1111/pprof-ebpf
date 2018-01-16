@@ -8,6 +8,18 @@ import (
 	"github.com/cpg1111/pprof-ebpf/pkg/heap"
 )
 
+func init() {
+	heapprofileCMD.Flags().String("exec", "", "a command to execute and profile")
+	heapprofileCMD.Flags().Int("pid", 0, "pid to profile, if exec is provided, this is ignored")
+	heapprofileCMD.Flags().Int("min-size", 0, "minimum heap allocation size")
+	heapprofileCMD.Flags().Int("max-size", 4096, "maximum heap allocation size")
+	heapprofileCMD.Flags().Int("count", 1024, "number of stack traces per sample")
+	heapprofileCMD.Flags().Float64("sample-rate", 1, "sample every N milliseconds")
+	heapprofileCMD.Flags().Bool("ktrace", true, "whether to trace kernel space")
+	heapprofileCMD.Flags().Bool("all", true, "trace both kernel space and user space")
+	heapprofileCMD.Flags().String("src", "c", "source object for stack trace symbols")
+}
+
 func getHeapOpts(cmd *cobra.Command) (opts heap.RunOpts, err error) {
 	flags := cmd.Flags()
 	exec, err := flags.GetString("exec")
@@ -33,7 +45,11 @@ func getHeapOpts(cmd *cobra.Command) (opts heap.RunOpts, err error) {
 	if err != nil {
 		return
 	}
-	opts.SampleRate, err = flags.GetInt("count")
+	opts.Count, err = flags.GetInt("count")
+	if err != nil {
+		return
+	}
+	opts.SampleRate, err = flags.GetFloat64("sample-rate")
 	if err != nil {
 		return
 	}
@@ -53,7 +69,7 @@ func getHeapOpts(cmd *cobra.Command) (opts heap.RunOpts, err error) {
 }
 
 var heapprofileCMD = &cobra.Command{
-	Use:   "heap [OPTIONS]",
+	Use:   "heap",
 	Short: "profile heap allocations",
 	Long: `profile heap allocations in user space and/or kernel space
 	for a specific pid or binary`,
