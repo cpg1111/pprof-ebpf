@@ -5,7 +5,7 @@ import (
 )
 
 func Execute() {
-	rootCMD = &cobra.Command{
+	rootCMD := &cobra.Command{
 		Use:   "pprof-ebpf [OPTION] [SUBCOMMAND] [SUBOPTIONS]",
 		Short: "A profiler using ebpf that produces pprof format profiles",
 		Long: `A profiler that uses ebpf for user and kernel space tracing
@@ -20,6 +20,5 @@ func Execute() {
 	}
 	rootCMD.AddCommand(cpuprofileCMD)
 	rootCMD.AddCommand(heapprofileCMD)
-
-	rootCmd.Execute()
+	rootCMD.Execute()
 }

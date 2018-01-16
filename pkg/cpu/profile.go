@@ -93,19 +93,32 @@ type procKey struct {
 	Name          []byte
 }
 
-func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int, uOnly, kOnly, folded bool) (err error) {
+type RunOpts struct {
+	PID              int
+	TGID             int
+	MinBlock         int
+	MaxBlock         int
+	TaskCommLen      int
+	StackStorageSize int
+	State            int
+	UOnly            bool
+	KOnly            bool
+	Folded           bool
+}
+
+func Run(opts RunOpts) (err error) {
 	var threadCtx, stackCtx, threadFilter, stateFilter, uStackGet, kStackGet string
-	if tgid != 0 {
-		threadCtx = fmt.Sprintf("PID %d", tgid)
-		threadFilter = fmt.Sprintf("tgid == %d", tgid)
-	} else if pid != 0 {
-		threadCtx = fmt.Sprintf("PID %d", pid)
-		threadFilter = fmt.Sprintf("pid == %d", pid)
-	} else if uOnly {
+	if opts.TGID != 0 {
+		threadCtx = fmt.Sprintf("PID %d", opts.TGID)
+		threadFilter = fmt.Sprintf("tgid == %d", opts.TGID)
+	} else if opts.PID != 0 {
+		threadCtx = fmt.Sprintf("PID %d", opts.PID)
+		threadFilter = fmt.Sprintf("pid == %d", opts.PID)
+	} else if opts.UOnly {
 		threadCtx = "user threads"
 		threadFilter = "!(prev->flags & PF_KTHREAD)"
 		kStackGet = "-1"
-	} else if kOnly {
+	} else if opts.KOnly {
 		threadCtx = "kernel threads"
 		threadFilter = "prev->flags & PF_KTHREAD"
 		uStackGet = "-1"
@@ -113,10 +126,10 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 		threadCtx = "all threads"
 		threadFilter = "1"
 	}
-	if state == 0 {
+	if opts.State == 0 {
 		stateFilter = "prev->state == 0"
-	} else if state <= -1 {
-		stateFilter = fmt.Sprintf("prev->state & %d", state)
+	} else if opts.State <= -1 {
+		stateFilter = fmt.Sprintf("prev->state & %d", opts.State)
 	} else {
 		stateFilter = "1"
 	}
@@ -127,10 +140,10 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 		kStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK)"
 	}
 	tmpl := &srcTMPL{
-		MinBlockUS:       minBlock,
-		MaxBlockUS:       maxBlock,
-		TaskCommLen:      taskCommLen,
-		StackStorageSize: stackStorageSize,
+		MinBlockUS:       opts.MinBlock,
+		MaxBlockUS:       opts.MaxBlock,
+		TaskCommLen:      opts.TaskCommLen,
+		StackStorageSize: opts.StackStorageSize,
 		ThreadFilter:     threadFilter,
 		StateFilter:      stateFilter,
 		UserStackGet:     uStackGet,
@@ -150,7 +163,7 @@ func Run(pid, tgid, minBlock, maxBlock, taskCommLen, stackStorageSize, state int
 	if err != nil {
 		return err
 	}
-	if !folded {
+	if !opts.Folded {
 		fmt.Printf("Tracing on-cpu (us) of %s by %s stack\n", threadCtx, stackCtx)
 	}
 	iter := mod.TableIter()
