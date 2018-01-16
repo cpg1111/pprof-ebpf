@@ -230,7 +230,7 @@ const (
 type srcTMPL struct {
 	SizeFilter   string
 	StackFlags   string
-	SampleEveryN int
+	SampleEveryN float64
 	PageSize     int
 }
 
@@ -303,24 +303,40 @@ func createUserProbes(mod *bpf.Module, pid int, srcObj string) error {
 	return nil
 }
 
-func Run(pid, minSize, maxSize, sampleRate, count int, kTrace, combinedOnly, traceAll bool, srcObj string) error {
+type RunOpts struct {
+	PID          int
+	MinSize      int
+	MaxSize      int
+	Count        int
+	SampleRate   float64
+	KTrace       bool
+	CombinedOnly bool
+	TraceAll     bool
+	SRCObj       string
+}
+
+func Run(opts RunOpts) error {
 	tmpl := &srcTMPL{
 		StackFlags:   "BPF_F_REUSE_STACKID",
-		SampleEveryN: sampleRate,
+		SampleEveryN: opts.SampleRate,
 		PageSize:     os.Getpagesize(),
 	}
-	if minSize > -1 && maxSize > -1 {
-		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) < %d || (int)(size) > %d) return 0;", minSize, maxSize)
-	} else if minSize > -1 {
-		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) < %d) return 0;", minSize)
-	} else if maxSize > -1 {
-		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) > %d) return 0;", maxSize)
+	if opts.MinSize > -1 && opts.MaxSize > -1 {
+		tmpl.SizeFilter = fmt.Sprintf(
+			"if ((int)(size) < %d || (int)(size) > %d) return 0;",
+			opts.MinSize,
+			opts.MaxSize,
+		)
+	} else if opts.MinSize > -1 {
+		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) < %d) return 0;", opts.MinSize)
+	} else if opts.MaxSize > -1 {
+		tmpl.SizeFilter = fmt.Sprintf("if ((int)(size) > %d) return 0;", opts.MaxSize)
 	}
 	src := bpfSRC
-	if kTrace {
+	if opts.KTrace {
 		src = concatSRCs(bpfSRC, kSRC)
 	}
-	if !kTrace || traceAll {
+	if !opts.KTrace || opts.TraceAll {
 		tmpl.StackFlags = tmpl.StackFlags + "|BPF_F_USER_STACK"
 	}
 	script, err := srcfmt.ProcessSrc(src, tmpl)
@@ -331,8 +347,8 @@ func Run(pid, minSize, maxSize, sampleRate, count int, kTrace, combinedOnly, tra
 	if mod == nil {
 		return bpferrors.ErrBadModuleBuild
 	}
-	if !kTrace || traceAll {
-		err = createUserProbes(mod, pid, srcObj)
+	if !opts.KTrace || opts.TraceAll {
+		err = createUserProbes(mod, opts.PID, opts.SRCObj)
 		if err != nil {
 			return fmt.Errorf("failed to create userspace probes: %s", err)
 		}
@@ -340,7 +356,7 @@ func Run(pid, minSize, maxSize, sampleRate, count int, kTrace, combinedOnly, tra
 		if err != nil {
 			return fmt.Errorf("failed to load 'free()' probe: %s", err)
 		}
-		err = mod.AttachUprobe(srcObj, "free", probe, pid)
+		err = mod.AttachUprobe(opts.SRCObj, "free", probe, opts.PID)
 		if err != nil {
 			return fmt.Errorf("failed to attach 'free()' probe: %s", err)
 		}
