@@ -2,6 +2,11 @@
 
 
 [[projects]]
+  name = "github.com/golang/protobuf"
+  packages = ["proto"]
+  revision = "1e59b77b52bf8e4b449a57e6f79f21226d571845"
+
+[[projects]]
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
@@ -45,6 +50,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1a578e12d6da0eabc758fdf2f9425cba5c7730fdadf7e68fb85253b84d973b44"
+  inputs-digest = "f52a14b1b13f493c03054525adbc83bf078e21b5776a6e64bb1a3c3e959e614e"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -52,10 +52,21 @@ ifeq (,$(wildcard $(GOPATH)/bin/dep))
 	go get github.com/golang/dep
 endif
 
+ifeq (,$(wildcard /usr/local/bin/protoc))
+	cd /tmp/ && \
+	git clone https://github.com/google/protobuf.git && \
+	cd protobuf && \
+	./configure && make && make install
+endif
+
 .PHONY: build
 build:
 ifeq (,$(wildcard ./vendor/github.com/))
 	dep ensure
+endif
+ifeq (,$(wildcard ./vendor/github.com/google/pprof/proto/profile.pb.go))
+	cd ./vendor/github.com/google/pprof/proto/ && \
+	protoc ./profile.proto
 endif
 	sudo -E go build -o pprof-ebpf ./main.go
 
