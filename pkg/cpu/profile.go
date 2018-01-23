@@ -106,7 +106,7 @@ type RunOpts struct {
 	Folded           bool
 }
 
-func Run(opts RunOpts) (err error) {
+func Create(opts RunOpts) (*bpf.Module, error) {
 	var threadCtx, stackCtx, threadFilter, stateFilter, uStackGet, kStackGet string
 	if opts.TGID != 0 {
 		threadCtx = fmt.Sprintf("PID %d", opts.TGID)
@@ -151,24 +151,22 @@ func Run(opts RunOpts) (err error) {
 	}
 	script, err := srcfmt.ProcessSrc(bpfSRC, tmpl)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	mod := bpf.NewModule(script.String(), nil)
 	if mod == nil {
-		return bpferrors.ErrBadModuleBuild
+		return nil, bpferrors.ErrBadModuleBuild
 	}
-	defer mod.Close()
 	ev, err := mod.LoadKprobe("oncpu")
+	if err != nil {
+		return nil, err
+	}
 	err = mod.AttachKprobe("finish_task_switch", ev)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !opts.Folded {
 		fmt.Printf("Tracing on-cpu (us) of %s by %s stack\n", threadCtx, stackCtx)
 	}
-	iter := mod.TableIter()
-	for res := range iter { // TODO use this data
-		fmt.Printf("%+v\n", res)
-	}
-	return nil
+	return mod, nil
 }

@@ -315,7 +315,7 @@ type RunOpts struct {
 	SRCObj       string
 }
 
-func Run(opts RunOpts) error {
+func Create(opts RunOpts) (*bpf.Module, error) {
 	tmpl := &srcTMPL{
 		StackFlags:   "BPF_F_REUSE_STACKID",
 		SampleEveryN: opts.SampleRate,
@@ -341,31 +341,27 @@ func Run(opts RunOpts) error {
 	}
 	script, err := srcfmt.ProcessSrc(src, tmpl)
 	if err != nil {
-		return fmt.Errorf("failed to process bpf source code: %s", err)
+		return nil, fmt.Errorf("failed to process bpf source code: %s", err)
 	}
 	mod := bpf.NewModule(script.String(), nil)
 	if mod == nil {
-		return bpferrors.ErrBadModuleBuild
+		return nil, bpferrors.ErrBadModuleBuild
 	}
 	if !opts.KTrace || opts.TraceAll {
 		err = createUserProbes(mod, opts.PID, opts.SRCObj)
 		if err != nil {
-			return fmt.Errorf("failed to create userspace probes: %s", err)
+			return nil, fmt.Errorf("failed to create userspace probes: %s", err)
 		}
 		probe, err := mod.LoadUprobe("free_enter")
 		if err != nil {
-			return fmt.Errorf("failed to load 'free()' probe: %s", err)
+			return nil, fmt.Errorf("failed to load 'free()' probe: %s", err)
 		}
 		err = mod.AttachUprobe(opts.SRCObj, "free", probe, opts.PID)
 		if err != nil {
-			return fmt.Errorf("failed to attach 'free()' probe: %s", err)
+			return nil, fmt.Errorf("failed to attach 'free()' probe: %s", err)
 		}
 	} else {
 		fmt.Println("attaching kernel tracepoints...")
 	}
-	iter := mod.TableIter()
-	for res := range iter {
-		fmt.Printf("%+v\n", res)
-	}
-	return nil
+	return mod, nil
 }

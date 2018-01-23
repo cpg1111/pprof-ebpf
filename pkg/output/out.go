@@ -3,6 +3,7 @@ package output
 import (
 	"compress/gzip"
 	"io"
+	"os"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -14,7 +15,7 @@ type Writer struct {
 	destName string
 }
 
-func NewWriter(dstName string, sampleTypes ...string) *Writer {
+func NewWriter(dstName string, sampleTypes ...*pb.ValueType) *Writer {
 	return &Writer{
 		destName: dstName,
 		Out: &pb.Profile{
@@ -24,15 +25,15 @@ func NewWriter(dstName string, sampleTypes ...string) *Writer {
 }
 
 func (w *Writer) AddSample(sample *pb.Sample) {
-	w.Out.Samples = append(w.Out.Samples, sample)
+	w.Out.Sample = append(w.Out.Sample, sample)
 }
 
 func (w *Writer) AddMapping(mapping *pb.Mapping) {
-	w.Out.Mappings = append(w.Out.Mappings, mapping)
+	w.Out.Mapping = append(w.Out.Mapping, mapping)
 }
 
 func (w *Writer) AddLocation(location *pb.Location) {
-	w.Out.Locations = append(w.Out.Locations, location)
+	w.Out.Location = append(w.Out.Location, location)
 }
 
 func (w *Writer) AddFunction(function *pb.Function) {
@@ -40,7 +41,7 @@ func (w *Writer) AddFunction(function *pb.Function) {
 }
 
 func (w *Writer) SetTime(t time.Time) {
-	w.Out.TimesNanos = t.UnixNano()
+	w.Out.TimeNanos = t.UnixNano()
 }
 
 func (w *Writer) SetDuration(d time.Duration) {
@@ -57,7 +58,7 @@ func (w *Writer) WriteTo(dest io.Writer) (n int, err error) {
 	if err != nil {
 		return 0, err
 	}
-	return gzipWriter.Writer(payload)
+	return gzipWriter.Write(payload)
 }
 
 func (w *Writer) Output() (err error) {
