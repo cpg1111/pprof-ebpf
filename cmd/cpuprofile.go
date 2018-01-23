@@ -1,11 +1,16 @@
 package cmd
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/cpg1111/pprof-ebpf/pkg/childprocess"
 	"github.com/cpg1111/pprof-ebpf/pkg/cpu"
+	"github.com/cpg1111/pprof-ebpf/pkg/output"
 )
 
 func init() {
@@ -90,11 +95,17 @@ var cpuprofileCMD = &cobra.Command{
 				"profiler": "cpu",
 			}).Fatal(err.Error())
 		}
-		err = cpu.Run(opts)
+		mod, err := cpu.Create(opts)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"profiler": "cpu",
 			}).Fatal(err.Error())
 		}
+		parser := output.NewParser(mod)
+		go parser.Parse(cpu.Format)
+		defer parser.Stop()
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+		<-sigChan
 	},
 }

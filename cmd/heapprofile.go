@@ -1,11 +1,16 @@
 package cmd
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/cpg1111/pprof-ebpf/pkg/childprocess"
 	"github.com/cpg1111/pprof-ebpf/pkg/heap"
+	"github.com/cpg1111/pprof-ebpf/pkg/output"
 )
 
 func init() {
@@ -80,11 +85,17 @@ var heapprofileCMD = &cobra.Command{
 				"profiler": "heap",
 			}).Fatal(err.Error())
 		}
-		err = heap.Run(opts)
+		mod, err := heap.Create(opts)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"profiler": "heap",
 			}).Fatal(err.Error())
 		}
+		parser := output.NewParser(mod)
+		go parser.Parse(heap.Format)
+		defer parser.Stop()
+		sigChan := make(chan os.Signal, 2)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+		<-sigChan
 	},
 }
