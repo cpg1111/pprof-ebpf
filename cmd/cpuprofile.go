@@ -89,6 +89,8 @@ var cpuprofileCMD = &cobra.Command{
 	Long: `profile cpu in user space and/or kernel space
 	for a specific pid or binary`,
 	Run: func(cmd *cobra.Command, args []string) {
+		sigChan := make(chan os.Signal)
+		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 		opts, err := getCPUOpts(cmd)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -104,8 +106,6 @@ var cpuprofileCMD = &cobra.Command{
 		parser := output.NewParser(mod)
 		go parser.Parse(cpu.Format)
 		defer parser.Stop()
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 		<-sigChan
 	},
 }

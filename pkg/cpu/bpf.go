@@ -19,6 +19,7 @@ struct proc_key_t {
 BPF_HASH(counts, struct proc_key_t);
 BPF_HASH(start, u32);
 BPF_STACK_TRACE(stack_traces, {{ .StackStorageSize }});
+BPF_PERF_OUTPUT(debugging);
 
 int oncpu(struct pt_regs *ctx, struct task_struct *prev) {
     u32 pid = prev->pid;
@@ -58,6 +59,7 @@ int oncpu(struct pt_regs *ctx, struct task_struct *prev) {
 
     val = counts.lookup_or_init(&key, &zero);
     (*val) += delta;
+    debugging.perf_submit(ctx, &key.name, sizeof(key.name));
     return 0;
 }
 `
