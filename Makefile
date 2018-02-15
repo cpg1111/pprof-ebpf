@@ -105,4 +105,5 @@ uninstall:
 
 .PHONY: generate
 generate:
+	rm pkg/cpu/bpf.go pkg/heap/bpf.go
 	go generate ./...
