@@ -18,12 +18,15 @@ if($(KREV) < $(3)) {print 0} else { print 1  } \
 } } } }}' \
 )
 
-ifneq ($(call kver_ge,4,9,0),1)
-echo "pprof-ebpf requires kernel features found in 4.9.X and newer" && exit 1
-endif
+.PHONY: all
+all: get-deps build
 
 .PHONY: get-deps
 get-deps:
+ifneq ($(call kver_ge,4,9,0),1)
+	echo "pprof-ebpf requires kernel features found in 4.9.X and newer" && exit 1
+endif
+
 ifeq (,$(wildcard /lib/modules/$(KVER)))
 	sudo ${PKGMGR} ${INSTALL} linux-headers-${KVER}
 endif
@@ -35,7 +38,8 @@ ifeq (,$(wildcard /usr/share/bcc/))
 	if ! [ `which go` -eq "" ]; then sudo ${PKGMGR} ${INSTALL} golang; fi
 	if ! [ `which clang` -eq "" ]; then sudo ${PKGMGR} ${INSTALL} \
 		llvm-3.8 libclang-3.8-dev bison \
-		libelf-dev flex libedit-dev zlib1g-dev;\
+		libelf-dev flex libedit-dev zlib1g-dev \
+		automake libtool;\
 	fi
 	if ! [ `which cmake` -eq "" ]; then sudo ${PKGMGR} ${INSTALL} cmake; fi
 	if ! [ `which python` -eq "" ]; then sudo ${PKGMGR} ${INSTALL} python; fi
@@ -56,11 +60,16 @@ ifeq (,$(wildcard /usr/local/bin/protoc))
 	cd /tmp/ && \
 	git clone https://github.com/google/protobuf.git && \
 	cd protobuf && \
+	./autogen.sh && \
 	./configure && make && make install
 endif
 
 .PHONY: build
 build:
+ifneq ($(call kver_ge,4,9,0),1)
+	echo "pprof-ebpf requires kernel features found in 4.9.X and newer" && exit 1
+endif
+
 ifeq (,$(wildcard ./vendor/github.com/))
 	dep ensure
 endif
@@ -72,6 +81,10 @@ endif
 
 .PHONY: test
 test:
+ifneq ($(call kver_ge,4,9,0),1)
+	echo "pprof-ebpf requires kernel features found in 4.9.X and newer" && exit 1
+endif
+
 	go test -v ./...
 
 .PHONY: clean
@@ -80,8 +93,17 @@ clean:
 
 .PHONY: install
 install:
+ifneq ($(call kver_ge,4,9,0),1)
+	echo "pprof-ebpf requires kernel features found in 4.9.X and newer" && exit 1
+endif
+
 	go install .
 
 .PHONY: uninstall
 uninstall:
 	rm `which pprof-ebpf`
+
+.PHONY: generate
+generate:
+	rm pkg/cpu/bpf.go pkg/heap/bpf.go
+	go generate ./...

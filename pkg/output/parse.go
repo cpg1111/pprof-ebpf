@@ -66,13 +66,13 @@ func (p *Parser) Parse(format FormatFunc) (err error) {
 	}
 	for {
 		idx, val, recv := reflect.Select(selectCases)
-		log.Info(idx)
 		if idx == 0 {
 			if recv {
 				return
 			}
 		} else if recv {
-			table := tables[idx]
+			table := tables[idx-1]
+			log.Info(table.Name())
 			entry := val.Interface().(bpf.Entry)
 			var key, value interface{}
 			key, err = p.parseHexInt(entry.Key)
