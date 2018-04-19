@@ -85,15 +85,16 @@ ifneq ($(call kver_ge,4,9,0),1)
 	echo "pprof-ebpf requires kernel features found in 4.9.X and newer" && exit 1
 endif
 
+	GOPATH=/go/ go env
 ifeq (,$(wildcard ./vendor/github.com/))
-	dep ensure
+	GOPATH=/go/ dep ensure
 endif
 ifeq (,$(wildcard ./vendor/github.com/google/pprof/proto/profile.pb.go))
 	cd ./vendor/github.com/google/pprof/proto/ && \
 	protoc ./profile.proto
 endif
 	mkdir -p ./build/
-	go build -o ./build/pprof-ebpf ./main.go
+	GOPATH=/go/ go build -o ./build/pprof-ebpf ./main.go
 
 .PHONY: test
 test:
