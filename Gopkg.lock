@@ -7,6 +7,13 @@
   revision = "1e59b77b52bf8e4b449a57e6f79f21226d571845"
 
 [[projects]]
+  branch = "compiled_protobuf"
+  name = "github.com/google/pprof"
+  packages = ["proto"]
+  revision = "c9a276940648ffae3f38dea6828578d7c7efc69a"
+  source = "github.com/cpg1111/pprof"
+
+[[projects]]
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
@@ -15,14 +22,17 @@
 [[projects]]
   branch = "master"
   name = "github.com/iovisor/gobpf"
-  packages = ["bcc","pkg/cpuonline"]
-  revision = "0916381e88e0edd4ba0bfbd20ad33e5a1a0d959b"
+  packages = [
+    "bcc",
+    "pkg/cpuonline"
+  ]
+  revision = "a0944e60a853e089f9e10a21076de6ba5bfb335c"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
   packages = ["."]
-  revision = "d682213848ed68c0a260ca37d6dd5ace8423f5ba"
-  version = "v1.0.4"
+  revision = "c155da19408a8799da419ed3eeb0cb5db0ad5dbc"
+  version = "v1.0.5"
 
 [[projects]]
   name = "github.com/spf13/cobra"
@@ -32,24 +42,27 @@
 [[projects]]
   name = "github.com/spf13/pflag"
   packages = ["."]
-  revision = "e57e3eeb33f795204c1ca35f56c44f83227c6e66"
-  version = "v1.0.0"
+  revision = "583c0c0531f06d5278b7d917446061adc344b5cd"
+  version = "v1.0.1"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "13931e22f9e72ea58bb73048bc752b48c6d4d4ac"
+  revision = "d6449816ce06963d9d136eee5a56fca5b0616e7e"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix","windows"]
-  revision = "fff93fa7cd278d84afc205751523809c464168ab"
+  packages = [
+    "unix",
+    "windows"
+  ]
+  revision = "3ccc7e5779793fd54564baf60c51bf017955e0ba"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "f52a14b1b13f493c03054525adbc83bf078e21b5776a6e64bb1a3c3e959e614e"
+  inputs-digest = "f1b2c2a9fc33729f25639cdb633154f96e23f09a2f09075a2831baab695412f1"
   solver-name = "gps-cdcl"
   solver-version = 1

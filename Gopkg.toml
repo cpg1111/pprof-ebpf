@@ -22,4 +22,5 @@ ignored = []
 
 [[constraint]]
   name = "github.com/google/pprof"
-  branch = "master"
+  branch = "compiled_protobuf"
+  source = "github.com/cpg1111/pprof"
