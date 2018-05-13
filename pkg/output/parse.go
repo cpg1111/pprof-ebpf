@@ -3,7 +3,7 @@ package output
 import (
 	"encoding/hex"
 	"fmt"
-	"reflect"
+	//	"reflect"
 	"strconv"
 	"strings"
 
@@ -44,13 +44,15 @@ func (p *Parser) parseHexInt(raw string) (uint64, error) {
 }
 
 func (p *Parser) Parse(format FormatFunc) (err error) {
-	var tables []*bpf.Table
-	selectCases := []reflect.SelectCase{
+	// var tables []*bpf.Table
+	/*selectCases := []reflect.SelectCase{
 		reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
 			Chan: reflect.ValueOf(p.stop),
 		},
-	}
+	}*/
+	var perfMap *bpf.PerfMap
+	out := make(chan []byte)
 	defer p.mod.Close()
 	for entry := range p.mod.TableIter() {
 		tableName, err := format(entry)
@@ -58,13 +60,21 @@ func (p *Parser) Parse(format FormatFunc) (err error) {
 			return err
 		}
 		table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
-		tables = append(tables, table)
-		selectCases = append(selectCases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(table.Iter()),
-		})
+		/*	tables = append(tables, table)
+			selectCases = append(selectCases, reflect.SelectCase{
+				Dir:  reflect.SelectRecv,
+				Chan: reflect.ValueOf(table.Iter()),
+			}) */
+		perfMap, err = bpf.InitPerfMap(table, out)
+		if err != nil {
+			return err
+		}
+		go perfMap.Start()
 	}
-	for {
+	for o := range out {
+		log.Info(string(o))
+	}
+	/*	for {
 		idx, val, recv := reflect.Select(selectCases)
 		if idx == 0 {
 			if recv {
@@ -96,7 +106,7 @@ func (p *Parser) Parse(format FormatFunc) (err error) {
 				"value": value,
 			}).Infof("entry: %s\n", table.Name())
 		}
-	}
+	}*/
 	return nil
 }
 
