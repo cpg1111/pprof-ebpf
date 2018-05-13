@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -91,6 +92,8 @@ var cpuprofileCMD = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		sigChan := make(chan os.Signal)
 		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
+		bckGrnd := context.Background()
+		ctx, cancel := context.WithCancel(bckGrnd)
 		opts, err := getCPUOpts(cmd)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -104,8 +107,10 @@ var cpuprofileCMD = &cobra.Command{
 			}).Fatal(err.Error())
 		}
 		parser := output.NewParser(mod)
-		go parser.Parse(cpu.Format)
+		go parser.Parse(ctx, cpu.Format)
 		defer parser.Stop()
+		println("here")
 		<-sigChan
+		cancel()
 	},
 }

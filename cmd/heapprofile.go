@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -79,6 +80,8 @@ var heapprofileCMD = &cobra.Command{
 	Long: `profile heap allocations in user space and/or kernel space
 	for a specific pid or binary`,
 	Run: func(cmd *cobra.Command, args []string) {
+		bckGrnd := context.Background()
+		ctx, cancel := context.WithCancel(bckGrnd)
 		opts, err := getHeapOpts(cmd)
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -92,10 +95,11 @@ var heapprofileCMD = &cobra.Command{
 			}).Fatal(err.Error())
 		}
 		parser := output.NewParser(mod)
-		go parser.Parse(heap.Format)
+		go parser.Parse(ctx, heap.Format)
 		defer parser.Stop()
 		sigChan := make(chan os.Signal, 2)
 		signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 		<-sigChan
+		cancel()
 	},
 }

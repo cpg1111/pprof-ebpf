@@ -1,9 +1,9 @@
 package output
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -43,59 +43,35 @@ func (p *Parser) parseHexInt(raw string) (uint64, error) {
 	return strconv.ParseUint(raw, 0, 64)
 }
 
-func (p *Parser) Parse(format FormatFunc) (err error) {
-	var tables []*bpf.Table
-	selectCases := []reflect.SelectCase{
-		reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(p.stop),
-		},
-	}
+func (p *Parser) Parse(ctx context.Context, format FormatFunc) (err error) {
+	println("inside")
+	out := make(chan []byte)
 	defer p.mod.Close()
 	for entry := range p.mod.TableIter() {
+		println("disbitch")
 		tableName, err := format(entry)
 		if err != nil {
-			return err
+			println(err)
+			//	return err
 		}
+		println("dem tables")
 		table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
-		tables = append(tables, table)
-		selectCases = append(selectCases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(table.Iter()),
-		})
-	}
-	for {
-		idx, val, recv := reflect.Select(selectCases)
-		if idx == 0 {
-			if recv {
-				return
-			}
-		} else if recv {
-			table := tables[idx-1]
-			log.Info(table.Name())
-			entry := val.Interface().(bpf.Entry)
-			var key, value interface{}
-			key, err = p.parseHexInt(entry.Key)
-			if err != nil {
-				origErr := err
-				key, err = p.parseHexString(entry.Key)
-				if err != nil {
-					return fmt.Errorf("%s and %s", origErr, err)
-				}
-			}
-			value, err = p.parseHexInt(entry.Value)
-			if err != nil {
-				origErr := err
-				value, err = p.parseHexString(entry.Value)
-				if err != nil {
-					return fmt.Errorf("%s and %s", origErr, err)
-				}
-			}
-			log.WithFields(log.Fields{
-				"key":   key,
-				"value": value,
-			}).Infof("entry: %s\n", table.Name())
+		println("buildin tables")
+		perfMap, err := bpf.InitPerfMap(table, out)
+		println("I gots the map")
+		if err != nil {
+			println(err)
+			//	return err
 		}
+		go func() {
+			perfMap.Start()
+			<-ctx.Done()
+			perfMap.Stop()
+		}()
+	}
+	for o := range out {
+		println("mhm")
+		log.Info(string(o))
 	}
 	return nil
 }
