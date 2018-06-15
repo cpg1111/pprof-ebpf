@@ -47,27 +47,28 @@ func (p *Parser) Parse(ctx context.Context, format FormatFunc) (err error) {
 	println("inside")
 	out := make(chan []byte)
 	defer p.mod.Close()
-	for entry := range p.mod.TableIter() {
-		println("disbitch")
-		tableName, err := format(entry)
-		if err != nil {
-			println(err)
-			//	return err
-		}
-		println("dem tables")
-		table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
-		println("buildin tables")
-		perfMap, err := bpf.InitPerfMap(table, out)
-		println("I gots the map")
-		if err != nil {
-			println(err)
-			//	return err
-		}
-		go func() {
+	for e := range p.mod.TableIter() {
+		go func(entry map[string]interface{}) {
+			println("disbitch")
+			tableName, err := format(entry)
+			if err != nil {
+				println(err)
+				//	return err
+			}
+			println("dem tables")
+			table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
+			println("buildin tables")
+			perfMap, err := bpf.InitPerfMap(table, out)
+			println("I gots the map")
+			if err != nil {
+				println(err)
+				//	return err
+			}
 			perfMap.Start()
 			<-ctx.Done()
 			perfMap.Stop()
-		}()
+
+		}(e)
 	}
 	for o := range out {
 		println("mhm")
