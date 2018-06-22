@@ -5,15 +5,24 @@ import (
 	"fmt"
 
 	bpf "github.com/iovisor/gobpf/bcc"
+	"github.com/iovisor/gobpf/pkg/cpuonline"
 
 	"github.com/cpg1111/pprof-ebpf/pkg/bpferrors"
+	"github.com/cpg1111/pprof-ebpf/pkg/bpftypes"
 	"github.com/cpg1111/pprof-ebpf/pkg/srcfmt"
 )
+
+/*
+#cgo CFLAGS: -I/usr/include/bcc/compat
+#cgo LDFLAGS: -lbcc
+#include <bcc/bpf_common.h>
+#include <bcc/libbpf.h>
+*/
+import "C"
 
 type srcTMPL struct {
 	MinBlockUS       int
 	MaxBlockUS       int
-	TaskCommLen      int
 	StackStorageSize int
 	ThreadFilter     string
 	StateFilter      string
@@ -34,12 +43,74 @@ type RunOpts struct {
 	TGID             int
 	MinBlock         int
 	MaxBlock         int
-	TaskCommLen      int
 	StackStorageSize int
-	State            int
 	UOnly            bool
 	KOnly            bool
 	Folded           bool
+	SamplePeriod     uint64
+	SampleFrequency  uint64
+}
+
+func attachPerfEvent(mod *bpf.Module, fnName string, evType, evConfig uint32, samplePeriod, sampleFreq uint64, pid, cpu, groupFD int) (int, error) {
+	fd, err := mod.Load(fnName, C.BPF_PROG_TYPE_PERF_EVENT, 0, 0)
+	if err != nil {
+		return 0, fmt.Errorf("failed to load BPF perf event %v : %v", fnName, err)
+	}
+	res, err := C.bpf_attach_perf_event(
+		C.int(fd),
+		C.uint32_t(evType),
+		C.uint32_t(evConfig),
+		C.uint64_t(samplePeriod),
+		C.uint64_t(sampleFreq),
+		C.pid_t(pid),
+		C.int(cpu),
+		C.int(groupFD),
+	)
+	if res < 0 || err != nil {
+		return -1, fmt.Errorf("failed to attach BPF perf event %v : %v", fnName, err)
+	}
+	return int(res), nil
+}
+
+func attachPerfEventCPUs(mod *bpf.Module, fnName string, evType, evConfig uint32, samplePeriod, sampleFreq uint64, pid, cpu, groupFD int) error {
+	if cpu >= 0 {
+		_, err := attachPerfEvent(
+			mod,
+			fnName,
+			evType,
+			evConfig,
+			samplePeriod,
+			sampleFreq,
+			pid,
+			cpu,
+			groupFD,
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	cpus, err := cpuonline.Get()
+	if err != nil {
+		return err
+	}
+	for _, c := range cpus {
+		_, err = attachPerfEvent(
+			mod,
+			fnName,
+			evType,
+			evConfig,
+			samplePeriod,
+			sampleFreq,
+			pid,
+			int(c),
+			groupFD,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func Create(opts RunOpts) (*bpf.Module, error) {
@@ -64,7 +135,6 @@ func Create(opts RunOpts) (*bpf.Module, error) {
 		kStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK)"
 	}
 	tmpl := &srcTMPL{
-		TaskCommLen:      opts.TaskCommLen,
 		ThreadFilter:     threadFilter,
 		UserStackGet:     uStackGet,
 		KernelStackGet:   kStackGet,
@@ -78,5 +148,16 @@ func Create(opts RunOpts) (*bpf.Module, error) {
 	if mod == nil {
 		return nil, bpferrors.ErrBadModuleBuild
 	}
+	attachPerfEventCPUs(
+		mod,
+		"do_perf_event",
+		bpftypes.PerfTypeSoftware,
+		bpftypes.PerfSWConfigCPUClock,
+		opts.SamplePeriod,
+		opts.SampleFrequency,
+		opts.PID,
+		-1,
+		-1,
+	)
 	return mod, nil
 }

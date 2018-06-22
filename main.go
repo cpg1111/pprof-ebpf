@@ -17,6 +17,7 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
+		os.Exit(0)
 	}
 	fmt.Println("running pprof-ebpf")
 	cmd.Execute()

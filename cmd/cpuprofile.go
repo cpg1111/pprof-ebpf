@@ -26,6 +26,8 @@ func init() {
 	cpuprofileCMD.Flags().Bool("user-space-only", false, "profile only user space")
 	cpuprofileCMD.Flags().Bool("kernel-space-only", false, "profile only kernel space")
 	cpuprofileCMD.Flags().Bool("fold", true, "whether to fold stack traces")
+	cpuprofileCMD.Flags().Uint64("sample-period", 0, "duration in seconds to sample")
+	cpuprofileCMD.Flags().Uint64("sample-frequency", 0, "rate which to sample in hertz")
 }
 
 func getCPUOpts(cmd *cobra.Command) (opts cpu.RunOpts, err error) {
@@ -57,15 +59,7 @@ func getCPUOpts(cmd *cobra.Command) (opts cpu.RunOpts, err error) {
 	if err != nil {
 		return
 	}
-	opts.TaskCommLen, err = flags.GetInt("task-name-len")
-	if err != nil {
-		return
-	}
 	opts.StackStorageSize, err = flags.GetInt("storage-size")
-	if err != nil {
-		return
-	}
-	opts.State, err = flags.GetInt("state")
 	if err != nil {
 		return
 	}
@@ -81,6 +75,11 @@ func getCPUOpts(cmd *cobra.Command) (opts cpu.RunOpts, err error) {
 	if err != nil {
 		return
 	}
+	opts.SamplePeriod, err = flags.GetUint64("sample-period")
+	if err != nil {
+		return
+	}
+	opts.SampleFrequency, err = flags.GetUint64("sample-frequency")
 	return
 }
 
@@ -107,7 +106,12 @@ var cpuprofileCMD = &cobra.Command{
 			}).Fatal(err.Error())
 		}
 		parser := output.NewParser(mod)
-		go parser.Parse(ctx, cpu.Format)
+		go func() {
+			pErr := parser.Parse(ctx, cpu.Format)
+			if pErr != nil {
+				log.Fatal(pErr)
+			}
+		}()
 		defer parser.Stop()
 		println("here")
 		<-sigChan

@@ -44,35 +44,32 @@ func (p *Parser) parseHexInt(raw string) (uint64, error) {
 }
 
 func (p *Parser) Parse(ctx context.Context, format FormatFunc) (err error) {
-	println("inside")
-	out := make(chan []byte)
 	defer p.mod.Close()
-	for e := range p.mod.TableIter() {
-		go func(entry map[string]interface{}) {
-			println("disbitch")
-			tableName, err := format(entry)
-			if err != nil {
-				println(err)
-				//	return err
-			}
-			println("dem tables")
-			table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
-			println("buildin tables")
+	for entry := range p.mod.TableIter() {
+		tableName, err := format(entry)
+		if err != nil {
+			return err
+		}
+		table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
+		tableConf := table.Config()
+		if tableConf["key_size"].(uint64) == 4 && tableConf["leaf_size"].(uint64) == 4 {
+			out := make(chan []byte)
+			fmt.Printf("%+v\n", table.Config())
 			perfMap, err := bpf.InitPerfMap(table, out)
-			println("I gots the map")
 			if err != nil {
-				println(err)
-				//	return err
+				return err
 			}
-			perfMap.Start()
-			<-ctx.Done()
+			go perfMap.Start()
+			for o := range out {
+				log.Info(string(o))
+			}
 			perfMap.Stop()
-
-		}(e)
-	}
-	for o := range out {
-		println("mhm")
-		log.Info(string(o))
+		} else {
+			entries := table.Iter()
+			for entry := range entries {
+				fmt.Printf("key %s, value %s\n", entry.Key, entry.Value)
+			}
+		}
 	}
 	return nil
 }
