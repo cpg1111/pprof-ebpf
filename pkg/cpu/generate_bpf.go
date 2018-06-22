@@ -23,7 +23,7 @@ type code struct {
 
 func main() {
 	gopath := os.Getenv("GOPATH")
-	cSRCPath := fmt.Sprintf("%s/src/github.com/%s/%s/pkg/cpu/c/bpf.c", gopath, org, repo)
+	cSRCPath := fmt.Sprintf("%s/src/github.com/%s/%s/pkg/cpu/c/profile.c", gopath, org, repo)
 	goDestPath := fmt.Sprintf("%s/src/github.com/%s/%s/pkg/cpu/bpf.go", gopath, org, repo)
 	f, err := os.Open(cSRCPath)
 	if err != nil {
