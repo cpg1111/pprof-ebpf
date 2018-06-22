@@ -5,17 +5,24 @@ import (
 	"fmt"
 
 	bpf "github.com/iovisor/gobpf/bcc"
+	"github.com/iovisor/gobpf/pkg/cpuonline"
 
 	"github.com/cpg1111/pprof-ebpf/pkg/bpferrors"
+	"github.com/cpg1111/pprof-ebpf/pkg/bpftypes"
 	"github.com/cpg1111/pprof-ebpf/pkg/srcfmt"
 )
 
+/*
+#cgo CFLAGS: -I/usr/include/bcc/compat
+#cgo LDFLAGS: -lbcc
+#include <bcc/bpf_common.h>
+#include <bcc/libbpf.h>
+*/
 import "C"
 
 type srcTMPL struct {
 	MinBlockUS       int
 	MaxBlockUS       int
-	TaskCommLen      int
 	StackStorageSize int
 	ThreadFilter     string
 	StateFilter      string
@@ -36,97 +43,89 @@ type RunOpts struct {
 	TGID             int
 	MinBlock         int
 	MaxBlock         int
-	TaskCommLen      int
 	StackStorageSize int
-	State            int
 	UOnly            bool
 	KOnly            bool
 	Folded           bool
+	SamplePeriod     uint64
+	SampleFrequency  uint64
 }
 
-/*func Create(opts RunOpts) (*bpf.Module, error) {
-	var threadCtx, stackCtx, threadFilter, stateFilter, uStackGet, kStackGet string
-	if opts.TGID != 0 {
-		threadCtx = fmt.Sprintf("PID %d", opts.TGID)
-		threadFilter = fmt.Sprintf("tgid == %d", opts.TGID)
-	} else if opts.PID != 0 {
-		threadCtx = fmt.Sprintf("PID %d", opts.PID)
-		threadFilter = fmt.Sprintf("pid == %d", opts.PID)
-	} else if opts.UOnly {
-		threadCtx = "user threads"
-		threadFilter = "!(prev->flags & PF_KTHREAD)"
-		kStackGet = "-1"
-	} else if opts.KOnly {
-		threadCtx = "kernel threads"
-		threadFilter = "prev->flags & PF_KTHREAD"
-		uStackGet = "-1"
-	} else {
-		threadCtx = "all threads"
-		threadFilter = "1"
-	}
-	if opts.State == 0 {
-		stateFilter = "prev->state == 0"
-	} else if opts.State <= -1 {
-		stateFilter = fmt.Sprintf("prev->state & %d", opts.State)
-	} else {
-		stateFilter = "1"
-	}
-	if len(uStackGet) == 0 {
-		uStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID)"
-	}
-	if len(kStackGet) == 0 {
-		kStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK)"
-	}
-	tmpl := &srcTMPL{
-		MinBlockUS:       opts.MinBlock,
-		MaxBlockUS:       opts.MaxBlock,
-		TaskCommLen:      opts.TaskCommLen,
-		StackStorageSize: opts.StackStorageSize,
-		ThreadFilter:     threadFilter,
-		StateFilter:      stateFilter,
-		UserStackGet:     uStackGet,
-		KernelStackGet:   kStackGet,
-	}
-	script, err := srcfmt.ProcessSrc(bpfSRC, tmpl)
+func attachPerfEvent(mod *bpf.Module, fnName string, evType, evConfig uint32, samplePeriod, sampleFreq uint64, pid, cpu, groupFD int) (int, error) {
+	fd, err := mod.Load(fnName, C.BPF_PROG_TYPE_PERF_EVENT, 0, 0)
 	if err != nil {
-		return nil, err
+		return 0, fmt.Errorf("failed to load BPF perf event %v : %v", fnName, err)
 	}
-	mod := bpf.NewModule(script.String(), nil)
-	if mod == nil {
-		return nil, bpferrors.ErrBadModuleBuild
+	res, err := C.bpf_attach_perf_event(
+		C.int(fd),
+		C.uint32_t(evType),
+		C.uint32_t(evConfig),
+		C.uint64_t(samplePeriod),
+		C.uint64_t(sampleFreq),
+		C.pid_t(pid),
+		C.int(cpu),
+		C.int(groupFD),
+	)
+	if res < 0 || err != nil {
+		return -1, fmt.Errorf("failed to attach BPF perf event %v : %v", fnName, err)
 	}
-	ev, err := mod.LoadKprobe("oncpu")
+	return int(res), nil
+}
+
+func attachPerfEventCPUs(mod *bpf.Module, fnName string, evType, evConfig uint32, samplePeriod, sampleFreq uint64, pid, cpu, groupFD int) error {
+	if cpu >= 0 {
+		_, err := attachPerfEvent(
+			mod,
+			fnName,
+			evType,
+			evConfig,
+			samplePeriod,
+			sampleFreq,
+			pid,
+			cpu,
+			groupFD,
+		)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	cpus, err := cpuonline.Get()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	err = mod.AttachKprobe("finish_task_switch", ev)
-	if err != nil {
-		return nil, err
+	for _, c := range cpus {
+		_, err = attachPerfEvent(
+			mod,
+			fnName,
+			evType,
+			evConfig,
+			samplePeriod,
+			sampleFreq,
+			pid,
+			int(c),
+			groupFD,
+		)
+		if err != nil {
+			return err
+		}
 	}
-	if !opts.Folded {
-		fmt.Printf("Tracing on-cpu (us) of %s by %s stack\n", threadCtx, stackCtx)
-	}
-	return mod, nil
-}*/
+	return nil
+}
 
 func Create(opts RunOpts) (*bpf.Module, error) {
-	var /*threadCtx, */ threadFilter, uStackGet, kStackGet string
+	var threadFilter, uStackGet, kStackGet string
 	if opts.TGID != 0 {
-		//		threadCtx = fmt.Sprintf("PID %d", opts.TGID)
 		threadFilter = fmt.Sprintf("tgid == %d", opts.TGID)
 	} else if opts.PID != 0 {
-		//		threadCtx = fmt.Sprintf("PID %d", opts.PID)
 		threadFilter = fmt.Sprintf("pid == %d", opts.PID)
 	} else if opts.UOnly {
-		//		threadCtx = "user threads"
 		threadFilter = "!(prev->flags & PF_KTHREAD)"
 		kStackGet = "-1"
 	} else if opts.KOnly {
-		//		threadCtx = "kernel threads"
 		threadFilter = "prev->flags & PF_KTHREAD"
 		uStackGet = "-1"
 	} else {
-		//		threadCtx = "all threads"
 		threadFilter = "1"
 	}
 	if len(uStackGet) == 0 {
@@ -136,10 +135,10 @@ func Create(opts RunOpts) (*bpf.Module, error) {
 		kStackGet = "stack_traces.get_stackid(ctx, BPF_F_REUSE_STACKID | BPF_F_USER_STACK)"
 	}
 	tmpl := &srcTMPL{
-		TaskCommLen:    opts.TaskCommLen,
-		ThreadFilter:   threadFilter,
-		UserStackGet:   uStackGet,
-		KernelStackGet: kStackGet,
+		ThreadFilter:     threadFilter,
+		UserStackGet:     uStackGet,
+		KernelStackGet:   kStackGet,
+		StackStorageSize: opts.StackStorageSize,
 	}
 	script, err := srcfmt.ProcessSrc(bpfSRC, tmpl)
 	if err != nil {
@@ -149,5 +148,16 @@ func Create(opts RunOpts) (*bpf.Module, error) {
 	if mod == nil {
 		return nil, bpferrors.ErrBadModuleBuild
 	}
+	attachPerfEventCPUs(
+		mod,
+		"do_perf_event",
+		bpftypes.PerfTypeSoftware,
+		bpftypes.PerfSWConfigCPUClock,
+		opts.SamplePeriod,
+		opts.SampleFrequency,
+		opts.PID,
+		-1,
+		-1,
+	)
 	return mod, nil
 }

@@ -26,7 +26,7 @@
     "bcc",
     "pkg/cpuonline"
   ]
-  revision = "a0944e60a853e089f9e10a21076de6ba5bfb335c"
+  revision = "3b07770c6d5e2bd37e582ecd49460e6ef094f257"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
@@ -49,7 +49,7 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["ssh/terminal"]
-  revision = "d6449816ce06963d9d136eee5a56fca5b0616e7e"
+  revision = "a8fb68e7206f8c78be19b432c58eb52a6aa34462"
 
 [[projects]]
   branch = "master"
@@ -58,7 +58,7 @@
     "unix",
     "windows"
   ]
-  revision = "3ccc7e5779793fd54564baf60c51bf017955e0ba"
+  revision = "8014b7b116a67fea23fbb82cd834c9ad656ea44b"
 
 [solve-meta]
   analyzer-name = "dep"

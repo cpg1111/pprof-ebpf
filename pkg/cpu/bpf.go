@@ -12,7 +12,7 @@ struct key_t {
     u64 kernel_ret_ip;
     int user_stack_id;
     int kernel_stack_id;
-    char name[{{ .TaskCommLen }}];
+    char name[TASK_COMM_LEN];
 };
 
 BPF_HASH(counts, struct key_t);

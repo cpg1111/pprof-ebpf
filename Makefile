@@ -19,7 +19,7 @@ if($(KREV) < $(3)) {print 0} else { print 1  } \
 )
 
 .PHONY: all
-all: get-deps build
+all: generate build
 
 .PHONY: get-deps
 get-deps:

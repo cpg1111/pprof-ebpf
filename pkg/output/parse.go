@@ -1,9 +1,9 @@
 package output
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
-	//	"reflect"
 	"strconv"
 	"strings"
 
@@ -43,16 +43,7 @@ func (p *Parser) parseHexInt(raw string) (uint64, error) {
 	return strconv.ParseUint(raw, 0, 64)
 }
 
-func (p *Parser) Parse(format FormatFunc) (err error) {
-	// var tables []*bpf.Table
-	/*selectCases := []reflect.SelectCase{
-		reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(p.stop),
-		},
-	}*/
-	var perfMap *bpf.PerfMap
-	out := make(chan []byte)
+func (p *Parser) Parse(ctx context.Context, format FormatFunc) (err error) {
 	defer p.mod.Close()
 	for entry := range p.mod.TableIter() {
 		tableName, err := format(entry)
@@ -60,53 +51,26 @@ func (p *Parser) Parse(format FormatFunc) (err error) {
 			return err
 		}
 		table := bpf.NewTable(p.mod.TableId(tableName), p.mod)
-		/*	tables = append(tables, table)
-			selectCases = append(selectCases, reflect.SelectCase{
-				Dir:  reflect.SelectRecv,
-				Chan: reflect.ValueOf(table.Iter()),
-			}) */
-		perfMap, err = bpf.InitPerfMap(table, out)
-		if err != nil {
-			return err
-		}
-		go perfMap.Start()
-	}
-	for o := range out {
-		log.Info(string(o))
-	}
-	/*	for {
-		idx, val, recv := reflect.Select(selectCases)
-		if idx == 0 {
-			if recv {
-				return
-			}
-		} else if recv {
-			table := tables[idx-1]
-			log.Info(table.Name())
-			entry := val.Interface().(bpf.Entry)
-			var key, value interface{}
-			key, err = p.parseHexInt(entry.Key)
+		tableConf := table.Config()
+		if tableConf["key_size"].(uint64) == 4 && tableConf["leaf_size"].(uint64) == 4 {
+			out := make(chan []byte)
+			fmt.Printf("%+v\n", table.Config())
+			perfMap, err := bpf.InitPerfMap(table, out)
 			if err != nil {
-				origErr := err
-				key, err = p.parseHexString(entry.Key)
-				if err != nil {
-					return fmt.Errorf("%s and %s", origErr, err)
-				}
+				return err
 			}
-			value, err = p.parseHexInt(entry.Value)
-			if err != nil {
-				origErr := err
-				value, err = p.parseHexString(entry.Value)
-				if err != nil {
-					return fmt.Errorf("%s and %s", origErr, err)
-				}
+			go perfMap.Start()
+			for o := range out {
+				log.Info(string(o))
 			}
-			log.WithFields(log.Fields{
-				"key":   key,
-				"value": value,
-			}).Infof("entry: %s\n", table.Name())
+			perfMap.Stop()
+		} else {
+			entries := table.Iter()
+			for entry := range entries {
+				fmt.Printf("key %s, value %s\n", entry.Key, entry.Value)
+			}
 		}
-	}*/
+	}
 	return nil
 }
 
